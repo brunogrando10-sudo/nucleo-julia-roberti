@@ -56,40 +56,39 @@ export default function DashboardPage() {
     const monthStart = startOfMonth(now).toISOString();
     const monthEnd = endOfMonth(now).toISOString();
 
-    // Todas as queries em paralelo (antes eram sequenciais — 4x mais rápido)
-    const [
-      { data: today },
-      { data: week },
-      { data: monthSessions },
-      { data: nextSessions },
-    ] = await Promise.all([
-      supabase
-        .from("sessions")
-        .select("*, patient:patients(id,name,phone,payment_type,session_value,active,created_at)")
-        .gte("scheduled_at", todayStart)
-        .lte("scheduled_at", todayEnd)
-        .neq("status", "cancelada")
-        .order("scheduled_at"),
-      supabase
-        .from("sessions")
-        .select("id, status")
-        .gte("scheduled_at", weekStart)
-        .lte("scheduled_at", weekEnd)
-        .neq("status", "cancelada"),
-      supabase
-        .from("sessions")
-        .select("status, amount")
-        .gte("scheduled_at", monthStart)
-        .lte("scheduled_at", monthEnd)
-        .neq("status", "cancelada"),
-      supabase
-        .from("sessions")
-        .select("*, patient:patients(id,name,phone,payment_type,session_value,active,created_at)")
-        .gt("scheduled_at", now.toISOString())
-        .eq("status", "agendada")
-        .order("scheduled_at")
-        .limit(1),
-    ]);
+    // Sessões de hoje
+    const { data: today } = await supabase
+      .from("sessions")
+      .select("*, patient:patients(*)")
+      .gte("scheduled_at", todayStart)
+      .lte("scheduled_at", todayEnd)
+      .neq("status", "cancelada")
+      .order("scheduled_at");
+
+    // Sessões da semana
+    const { data: week } = await supabase
+      .from("sessions")
+      .select("id, status")
+      .gte("scheduled_at", weekStart)
+      .lte("scheduled_at", weekEnd)
+      .neq("status", "cancelada");
+
+    // Sessões do mês para faturamento
+    const { data: monthSessions } = await supabase
+      .from("sessions")
+      .select("status, amount")
+      .gte("scheduled_at", monthStart)
+      .lte("scheduled_at", monthEnd)
+      .neq("status", "cancelada");
+
+    // Próxima sessão (após agora)
+    const { data: nextSessions } = await supabase
+      .from("sessions")
+      .select("*, patient:patients(*)")
+      .gt("scheduled_at", now.toISOString())
+      .eq("status", "agendada")
+      .order("scheduled_at")
+      .limit(1);
 
     const weekTotal = week?.length ?? 0;
     const weekPaid = week?.filter((s) => s.status === "paga" || s.status === "realizada").length ?? 0;
@@ -122,41 +121,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div>
-        <PageHeader title="Dashboard" subtitle="Carregando..." />
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-brand-light" />
-                <div className="flex-1 space-y-2 pt-1">
-                  <div className="h-2 bg-brand-light rounded w-3/4" />
-                  <div className="h-5 bg-brand-light rounded w-1/2" />
-                  <div className="h-2 bg-brand-light rounded w-2/3" />
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-        <Card padding={false}>
-          <div className="px-5 py-4 border-b border-brand-light">
-            <div className="h-6 bg-brand-light rounded w-40 animate-pulse" />
-          </div>
-          <div className="divide-y divide-brand-light">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3.5">
-                <div className="flex items-center gap-4">
-                  <div className="w-2.5 h-2.5 rounded-full bg-brand-light" />
-                  <div className="space-y-1.5">
-                    <div className="h-3 bg-brand-light rounded w-32 animate-pulse" />
-                    <div className="h-2 bg-brand-light rounded w-20 animate-pulse" />
-                  </div>
-                </div>
-                <div className="h-5 bg-brand-light rounded w-20 animate-pulse" />
-              </div>
-            ))}
-          </div>
-        </Card>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-terracota border-t-transparent" />
       </div>
     );
   }

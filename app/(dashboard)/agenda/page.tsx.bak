@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Session, Patient, SessionStatus } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -9,17 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Select } from "@/components/ui/Input";
 import { formatCurrency, formatTime } from "@/lib/utils";
-import {
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle,
-  DollarSign,
-  Zap,
-  CalendarDays,
-  Link2,
-  Loader2,
-} from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, CheckCircle, DollarSign, Zap } from "lucide-react";
 import {
   format,
   startOfWeek,
@@ -46,7 +35,6 @@ const EMPTY_FORM = {
 };
 
 export default function AgendaPage() {
-  const searchParams = useSearchParams();
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
@@ -56,41 +44,24 @@ export default function AgendaPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [gcalConnected, setGcalConnected] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
 
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   useEffect(() => {
-    const gcalParam = searchParams.get("gcal");
-    if (gcalParam === "connected") {
-      toast.success("Google Calendar conectado com sucesso!");
-      window.history.replaceState({}, "", "/agenda");
-    } else if (gcalParam === "error") {
-      toast.error("Erro ao conectar Google Calendar. Tente novamente.");
-      window.history.replaceState({}, "", "/agenda");
-    }
-    checkGcalStatus();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    loadData(); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function checkGcalStatus() {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    setGcalConnected(!!user?.user_metadata?.gcal_connected);
-  }
-
-  const loadData = useCallback(async () => {
+  async function loadData() {
     setLoading(true);
     const supabase = createClient();
-    const wEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
 
     const [{ data: sessionData }, { data: patientData }] = await Promise.all([
       supabase
         .from("sessions")
         .select("*, patient:patients(*)")
         .gte("scheduled_at", weekStart.toISOString())
-        .lte("scheduled_at", wEnd.toISOString())
+        .lte("scheduled_at", weekEnd.toISOString())
         .order("scheduled_at"),
       supabase.from("patients").select("*").eq("active", true).order("name"),
     ]);
@@ -98,21 +69,6 @@ export default function AgendaPage() {
     setSessions((sessionData as SessionWithPatient[]) ?? []);
     setPatients(patientData ?? []);
     setLoading(false);
-  }, [weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  async function getGcalTokens() {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.user_metadata?.gcal_connected) return null;
-    return {
-      access_token: user.user_metadata.gcal_access_token,
-      refresh_token: user.user_metadata.gcal_refresh_token,
-      expiry_date: user.user_metadata.gcal_expiry_date,
-    };
   }
 
   async function handleAddSession() {
@@ -130,82 +86,29 @@ export default function AgendaPage() {
       ? parseFloat(form.amount)
       : patient?.session_value ?? null;
 
-    const { data: newSession, error } = await supabase
-      .from("sessions")
-      .insert({
-        patient_id: form.patient_id,
-        scheduled_at: scheduledAt,
-        status: "agendada",
-        amount,
-        notes: form.notes || null,
-      })
-      .select()
-      .single();
+    const { error } = await supabase.from("sessions").insert({
+      patient_id: form.patient_id,
+      scheduled_at: scheduledAt,
+      status: "agendada",
+      amount,
+      notes: form.notes || null,
+    });
 
-    if (error || !newSession) {
+    if (error) {
       toast.error("Erro ao criar sessão.");
-      setSaving(false);
-      return;
+    } else {
+      toast.success("Sessão agendada com sucesso!");
+      setModalOpen(false);
+      setForm(EMPTY_FORM);
+      loadData();
     }
 
-    const tokens = await getGcalTokens();
-    if (tokens) {
-      try {
-        const res = await fetch("/api/google/create-event", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: newSession.id,
-            patientName: patient?.name ?? "Paciente",
-            scheduledAt,
-            amount,
-            notes: form.notes,
-          }),
-        });
-        const json = await res.json();
-        if (json.gcalEventId) {
-          await supabase
-            .from("sessions")
-            .update({ gcal_event_id: json.gcalEventId })
-            .eq("id", newSession.id);
-        }
-      } catch {
-        console.warn("GCal sync failed for create");
-      }
-    }
-
-    toast.success("Sessão agendada com sucesso!");
-    setModalOpen(false);
-    setForm(EMPTY_FORM);
-    loadData();
     setSaving(false);
   }
 
-  async function updateStatus(session: SessionWithPatient, status: SessionStatus) {
+  async function updateStatus(sessionId: string, status: SessionStatus) {
     const supabase = createClient();
-    await supabase.from("sessions").update({ status }).eq("id", session.id);
-
-    if (session.gcal_event_id) {
-      const tokens = await getGcalTokens();
-      if (tokens) {
-        try {
-          await fetch("/api/google/update-event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gcalEventId: session.gcal_event_id,
-              status,
-              patientName: session.patient?.name,
-              scheduledAt: session.scheduled_at,
-              amount: session.amount,
-            }),
-          });
-        } catch {
-          console.warn("GCal sync failed for update");
-        }
-      }
-    }
-
+    await supabase.from("sessions").update({ status }).eq("id", sessionId);
     loadData();
     toast.success(
       status === "realizada"
@@ -214,42 +117,14 @@ export default function AgendaPage() {
     );
   }
 
-  async function cancelSession(session: SessionWithPatient) {
+  async function cancelSession(sessionId: string) {
     const supabase = createClient();
     await supabase
       .from("sessions")
       .update({ status: "cancelada" })
-      .eq("id", session.id);
-
-    if (session.gcal_event_id) {
-      const tokens = await getGcalTokens();
-      if (tokens) {
-        try {
-          await fetch("/api/google/cancel-event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ gcalEventId: session.gcal_event_id }),
-          });
-        } catch {
-          console.warn("GCal sync failed for cancel");
-        }
-      }
-    }
-
+      .eq("id", sessionId);
     loadData();
     toast.success("Sessão cancelada.");
-  }
-
-  async function handleDisconnectGcal() {
-    setDisconnecting(true);
-    try {
-      await fetch("/api/google/disconnect", { method: "POST" });
-      setGcalConnected(false);
-      toast.success("Google Calendar desconectado.");
-    } catch {
-      toast.error("Erro ao desconectar.");
-    }
-    setDisconnecting(false);
   }
 
   const patientOptions = [
@@ -262,48 +137,14 @@ export default function AgendaPage() {
       <PageHeader
         title="Agenda"
         action={
-          <div className="flex items-center gap-2 flex-wrap">
-            {gcalConnected ? (
-              <button
-                onClick={handleDisconnectGcal}
-                disabled={disconnecting}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200
-                           bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100
-                           transition-colors disabled:opacity-60"
-              >
-                {disconnecting ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Link2 size={12} />
-                )}
-                Google Calendar conectado
-              </button>
-            ) : (
-              <a
-                href="/api/auth/google"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-nude/30
-                           bg-white text-brand-nude text-xs font-medium hover:border-brand-terracota
-                           hover:text-brand-terracota transition-colors"
-              >
-                <CalendarDays size={12} />
-                Conectar Google Calendar
-              </a>
-            )}
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus size={15} />
-              Adicionar sessão
-            </Button>
-          </div>
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus size={15} />
+            Adicionar sessão
+          </Button>
         }
       />
 
-      {gcalConnected && (
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-green-50 rounded-lg border border-green-100 text-xs text-green-700">
-          <Link2 size={12} />
-          Agenda sincronizada com o Google Calendar — sessões criadas ou canceladas aqui refletem automaticamente no seu calendário.
-        </div>
-      )}
-
+      {/* Navegação semanal */}
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => setWeekStart(subWeeks(weekStart, 1))}
@@ -323,16 +164,10 @@ export default function AgendaPage() {
         </button>
       </div>
 
+      {/* Grade semanal */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-          {[...Array(7)].map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="h-14 bg-brand-light rounded-lg mb-2" />
-              <div className="space-y-2">
-                <div className="h-14 bg-brand-light rounded-xl" />
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center justify-center h-40">
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-brand-terracota border-t-transparent" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
@@ -344,6 +179,7 @@ export default function AgendaPage() {
 
             return (
               <div key={day.toISOString()} className="min-w-0">
+                {/* Cabeçalho do dia */}
                 <div
                   className={`text-center mb-2 py-1.5 rounded-lg
                   ${isToday ? "bg-brand-dark text-white" : "bg-brand-light text-brand-dark"}`}
@@ -356,6 +192,7 @@ export default function AgendaPage() {
                   </p>
                 </div>
 
+                {/* Sessões do dia */}
                 <div className="space-y-2">
                   {daySessions.length === 0 ? (
                     <div className="text-center py-4 text-brand-nude/40 text-xs">
@@ -366,10 +203,9 @@ export default function AgendaPage() {
                       <SessionCard
                         key={session.id}
                         session={session}
-                        gcalConnected={gcalConnected}
-                        onMarkDone={() => updateStatus(session, "realizada")}
-                        onMarkPaid={() => updateStatus(session, "paga")}
-                        onCancel={() => cancelSession(session)}
+                        onMarkDone={() => updateStatus(session.id, "realizada")}
+                        onMarkPaid={() => updateStatus(session.id, "paga")}
+                        onCancel={() => cancelSession(session.id)}
                       />
                     ))
                   )}
@@ -380,6 +216,7 @@ export default function AgendaPage() {
         </div>
       )}
 
+      {/* Modal nova sessão */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -423,18 +260,6 @@ export default function AgendaPage() {
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
             placeholder="Deixe em branco para usar o valor padrão"
           />
-          <Input
-            label="Observações"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder="Opcional"
-          />
-          {gcalConnected && (
-            <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">
-              <CalendarDays size={12} />
-              Esta sessão será adicionada ao seu Google Calendar.
-            </div>
-          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancelar
@@ -451,13 +276,11 @@ export default function AgendaPage() {
 
 function SessionCard({
   session,
-  gcalConnected,
   onMarkDone,
   onMarkPaid,
   onCancel,
 }: {
   session: SessionWithPatient;
-  gcalConnected: boolean;
   onMarkDone: () => void;
   onMarkPaid: () => void;
   onCancel: () => void;
@@ -475,14 +298,7 @@ function SessionCard({
           <p className="text-[11px] font-semibold text-brand-dark truncate">
             {session.patient?.name}
           </p>
-          <div className="flex items-center gap-1">
-            {gcalConnected && session.gcal_event_id && (
-              <span title="Sincronizado com Google Calendar">
-                <Link2 size={9} className="text-green-500" />
-              </span>
-            )}
-            <SessionDot status={session.status} />
-          </div>
+          <SessionDot status={session.status} />
         </div>
         <p className="text-[10px] text-brand-nude">
           {formatTime(session.scheduled_at)}
@@ -490,6 +306,7 @@ function SessionCard({
         </p>
       </div>
 
+      {/* Ações (expandidas) */}
       {expanded && session.status !== "cancelada" && session.status !== "realizada" && (
         <div
           className="border-t border-brand-light px-2 py-2 flex flex-col gap-1"
