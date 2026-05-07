@@ -287,15 +287,21 @@ function AgendaPageInner() {
                 Google Calendar conectado
               </button>
             ) : (
-              <a
-                href="/api/auth/google"
+              <button
+                onClick={async () => {
+                  const supabase = createClient();
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (user) {
+                    window.location.href = `/api/auth/google?userId=${user.id}`;
+                  }
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-nude/30
                            bg-white text-brand-nude text-xs font-medium hover:border-brand-terracota
                            hover:text-brand-terracota transition-colors"
               >
                 <CalendarDays size={12} />
                 Conectar Google Calendar
-              </a>
+              </button>
             )}
             <Button onClick={() => setModalOpen(true)}>
               <Plus size={15} />

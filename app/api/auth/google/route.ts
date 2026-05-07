@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { getAuthUrl } from "@/lib/google/calendar";
-import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
+// Recebe o userId via query param enviado pelo cliente
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get("userId");
+
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://nucleo-julia-roberti.vercel.app";
 
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.redirect(`${baseUrl}/login`);
-    }
-
-    const url = getAuthUrl(user.id);
-    return NextResponse.redirect(url);
-  } catch {
+  if (!userId) {
     return NextResponse.redirect(`${baseUrl}/agenda?gcal=error`);
   }
+
+  const url = getAuthUrl(userId);
+  return NextResponse.redirect(url);
 }
