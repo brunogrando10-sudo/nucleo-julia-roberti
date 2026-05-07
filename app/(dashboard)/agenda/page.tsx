@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Session, Patient, SessionStatus } from "@/types";
@@ -46,6 +46,14 @@ const EMPTY_FORM = {
 };
 
 export default function AgendaPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-6 w-6 border-2 border-brand-terracota border-t-transparent" /></div>}>
+      <AgendaPageInner />
+    </Suspense>
+  );
+}
+
+function AgendaPageInner() {
   const searchParams = useSearchParams();
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
