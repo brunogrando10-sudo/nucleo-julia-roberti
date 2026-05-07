@@ -9,11 +9,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        brand: {
+          dark: "#27204d",
+          medium: "#434284",
+          light: "#dde6ea",
+          nude: "#c4afa4",
+          terracota: "#946145",
+        },
+      },
+      fontFamily: {
+        serif: ["Cormorant Garamond", "Georgia", "serif"],
+        sans: ["DM Sans", "system-ui", "sans-serif"],
       },
     },
   },
   plugins: [],
 };
+
 export default config;
