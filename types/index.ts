@@ -11,7 +11,7 @@ export type BillingMessageStatus = "pendente" | "enviado" | "falhou";
 export interface Patient {
   id: string;
   name: string;
-  phone: string;
+  phone?: string;
   email?: string;
   payment_type: PaymentType;
   session_value?: number;

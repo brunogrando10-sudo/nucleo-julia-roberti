@@ -67,7 +67,7 @@ export default function PatientsPage() {
     setEditingPatient(patient);
     setForm({
       name: patient.name,
-      phone: patient.phone,
+      phone: patient.phone ?? "",
       email: patient.email ?? "",
       payment_type: patient.payment_type,
       session_value: patient.session_value?.toString() ?? "",
@@ -87,7 +87,7 @@ export default function PatientsPage() {
 
     const payload = {
       name: form.name.trim(),
-      phone: form.phone.trim(),
+      phone: form.phone.trim() || null,
       email: form.email.trim() || null,
       payment_type: form.payment_type,
       session_value: form.session_value ? parseFloat(form.session_value) : null,
@@ -135,7 +135,7 @@ export default function PatientsPage() {
   const filtered = patients.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.phone.includes(search);
+      p.phone?.includes(search);
 
     const matchFilter =
       filter === "todos"
