@@ -69,6 +69,19 @@ function AgendaPageInner() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  const [gcalAuthUrl, setGcalAuthUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Monta a URL de auth assim que tiver o userId
+    async function buildAuthUrl() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setGcalAuthUrl(`/api/auth/google?userId=${user.id}`);
+      }
+    }
+    buildAuthUrl();
+  }, []);
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
@@ -336,21 +349,22 @@ function AgendaPageInner() {
                 </button>
               </>
             ) : (
-              <button
-                onClick={async () => {
-                  const supabase = createClient();
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (user) {
-                    window.location.href = `/api/auth/google?userId=${user.id}`;
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-nude/30
-                           bg-white text-brand-nude text-xs font-medium hover:border-brand-terracota
-                           hover:text-brand-terracota transition-colors"
-              >
-                <CalendarDays size={12} />
-                Conectar Google Calendar
-              </button>
+              gcalAuthUrl ? (
+                <a
+                  href={gcalAuthUrl}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-nude/30
+                             bg-white text-brand-nude text-xs font-medium hover:border-brand-terracota
+                             hover:text-brand-terracota transition-colors"
+                >
+                  <CalendarDays size={12} />
+                  Conectar Google Calendar
+                </a>
+              ) : (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-brand-nude/40 text-xs">
+                  <Loader2 size={12} className="animate-spin" />
+                  Carregando...
+                </span>
+              )
             )}
             <Button onClick={() => setModalOpen(true)}>
               <Plus size={15} />
