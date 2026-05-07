@@ -77,8 +77,8 @@ export default function PatientsPage() {
   }
 
   async function handleSave() {
-    if (!form.name || !form.phone) {
-      toast.error("Nome e telefone são obrigatórios.");
+    if (!form.name) {
+      toast.error("Nome é obrigatório.");
       return;
     }
 
@@ -233,7 +233,7 @@ export default function PatientsPage() {
           />
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Telefone / WhatsApp *"
+              label="Telefone / WhatsApp"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="(11) 99999-9999"

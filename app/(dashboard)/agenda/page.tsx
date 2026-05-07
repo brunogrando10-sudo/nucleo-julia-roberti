@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Link2,
   Loader2,
+  Download,
 } from "lucide-react";
 import {
   format,
@@ -66,6 +67,7 @@ function AgendaPageInner() {
   const [saving, setSaving] = useState(false);
   const [gcalConnected, setGcalConnected] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
@@ -121,6 +123,37 @@ function AgendaPageInner() {
       refresh_token: user.user_metadata.gcal_refresh_token,
       expiry_date: user.user_metadata.gcal_expiry_date,
     };
+  }
+
+  async function handleImportFromGcal() {
+    setImporting(true);
+    try {
+      const wEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+      const res = await fetch("/api/google/import-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weekStart: weekStart.toISOString(),
+          weekEnd: wEnd.toISOString(),
+        }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        toast.error("Erro ao importar eventos.");
+      } else {
+        const msg = json.imported === 0
+          ? "Nenhum evento novo para importar."
+          : `${json.imported} sessão(ões) importada(s) do Google Calendar!`;
+        toast.success(msg);
+        if (json.newPatients?.length > 0) {
+          toast(`Novos pacientes criados: ${json.newPatients.join(", ")}`, { icon: "👤" });
+        }
+        loadData();
+      }
+    } catch {
+      toast.error("Erro ao importar eventos.");
+    }
+    setImporting(false);
   }
 
   async function handleAddSession() {
@@ -272,20 +305,36 @@ function AgendaPageInner() {
         action={
           <div className="flex items-center gap-2 flex-wrap">
             {gcalConnected ? (
-              <button
-                onClick={handleDisconnectGcal}
-                disabled={disconnecting}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200
-                           bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100
-                           transition-colors disabled:opacity-60"
-              >
-                {disconnecting ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Link2 size={12} />
-                )}
-                Google Calendar conectado
-              </button>
+              <>
+                <button
+                  onClick={handleImportFromGcal}
+                  disabled={importing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-nude/30
+                             bg-white text-brand-nude text-xs font-medium hover:border-brand-medium
+                             hover:text-brand-medium transition-colors disabled:opacity-60"
+                >
+                  {importing ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Download size={12} />
+                  )}
+                  Importar semana do GCal
+                </button>
+                <button
+                  onClick={handleDisconnectGcal}
+                  disabled={disconnecting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200
+                             bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100
+                             transition-colors disabled:opacity-60"
+                >
+                  {disconnecting ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Link2 size={12} />
+                  )}
+                  GCal conectado
+                </button>
+              </>
             ) : (
               <button
                 onClick={async () => {
