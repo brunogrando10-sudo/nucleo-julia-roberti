@@ -8,11 +8,12 @@ export function getOAuthClient() {
   );
 }
 
-export function getAuthUrl() {
+export function getAuthUrl(userId: string) {
   const oauth2Client = getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
+    state: userId, // passa o userId no state para recuperar no callback
     scope: [
       "https://www.googleapis.com/auth/calendar",
       "https://www.googleapis.com/auth/calendar.events",
@@ -42,7 +43,7 @@ export async function createCalendarEvent(
   }: {
     summary: string;
     description?: string;
-    startAt: string; // ISO string
+    startAt: string;
     durationMinutes?: number;
   }
 ) {
@@ -94,9 +95,7 @@ export async function updateCalendarEvent(
 
   if (startAt) {
     const start = new Date(startAt);
-    const end = new Date(
-      start.getTime() + (durationMinutes ?? 50) * 60 * 1000
-    );
+    const end = new Date(start.getTime() + (durationMinutes ?? 50) * 60 * 1000);
     patch.start = { dateTime: start.toISOString(), timeZone: "America/Sao_Paulo" };
     patch.end = { dateTime: end.toISOString(), timeZone: "America/Sao_Paulo" };
   }
@@ -110,10 +109,7 @@ export async function updateCalendarEvent(
   return updated.data;
 }
 
-export async function deleteCalendarEvent(
-  tokens: GCalTokens,
-  gcalEventId: string
-) {
+export async function deleteCalendarEvent(tokens: GCalTokens, gcalEventId: string) {
   const calendar = await getCalendarClient(tokens);
   await calendar.events.delete({
     calendarId: "primary",
